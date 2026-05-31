@@ -14,18 +14,24 @@ from utils.search import searcher
 logging.basicConfig(level=logging.INFO)
 _subscribed_chats: set[int] = set()
 
-# Global reference to the running Application (for push from scanner)
-_bot_app: Application | None = None
+# Direct HTTP push to Telegram API (avoids cross-thread event loop issues)
+_bot_token: str = ""
+_bot_chat_id: str = ""
 
 
 async def send_to_chat(chat_id: str, text: str) -> bool:
-    """Send a message via the running bot. Thread-safe."""
-    global _bot_app
-    if not _bot_app:
+    """Send a message via direct Telegram HTTP API. Thread-safe (requests)."""
+    import requests
+    global _bot_token
+    if not _bot_token:
         return False
     try:
-        await _bot_app.bot.send_message(chat_id=chat_id, text=text, disable_web_page_preview=True)
-        return True
+        r = requests.post(
+            f"https://api.telegram.org/bot{_bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "disable_web_page_preview": True},
+            timeout=15,
+        )
+        return r.ok
     except Exception:
         return False
 
@@ -320,6 +326,16 @@ async def cmd_unsubscribe(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("❌ 알림 해지됨")
 
 
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """간단한 시작 확인"""
+    await update.message.reply_text(
+        "✅ 봇 정상 작동 중\n\n"
+        "/analyze 삼성전자 - 종목 분석\n"
+        "/buy AAPL - 매수 타이밍\n"
+        "/news 삼성전자 - 뉴스 요약\n"
+        "/help - 전체 명령어")
+
+
 async def cmd_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/도움 - 도움말"""
     await update.message.reply_text(
@@ -369,7 +385,7 @@ async def _korean_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     handlers = {
         "분석": cmd_analyze, "매수": cmd_buy, "뉴스": cmd_news,
         "기회": cmd_opportunities, "구독": cmd_subscribe,
-        "해지": cmd_unsubscribe, "도움": cmd_help, "시작": cmd_help,
+        "해지": cmd_unsubscribe, "도움": cmd_help, "시작": cmd_start,
     }
     handler = handlers.get(cmd)
     if handler:
@@ -389,7 +405,8 @@ def register_handlers(app):
     app.add_handler(CommandHandler(["opps", "opportunities", "scan"], cmd_opportunities))
     app.add_handler(CommandHandler("subscribe", cmd_subscribe))
     app.add_handler(CommandHandler("unsubscribe", cmd_unsubscribe))
-    app.add_handler(CommandHandler(["help", "start"], cmd_help))
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler(["help"], cmd_help))
 
     # 스케줄러는 web/app.py의 run_scan()이 담당 (중복 방지)
     # Telegram bot은 push-only 역할
@@ -411,21 +428,43 @@ def run_bot():
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
+async def _error_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Log errors during update handling."""
+    logger.error(f"Telegram error: {context.error}", exc_info=context.error)
+    if update and update.effective_message:
+        await update.effective_message.reply_text(f"❌ 오류 발생: {context.error}")
+
+
 def run_bot_async(token: str):
     """Run bot in a separate thread with its own event loop.
-    Called from web/app.py lifespan. Stores _bot_app for push access."""
-    global _bot_app
+    Called from web/app.py lifespan. Stores token for direct API push."""
+    global _bot_token
+    _bot_token = token
     import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     try:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         app = Application.builder().token(token).build()
         register_handlers(app)
-        _bot_app = app
+        app.add_error_handler(_error_handler)
         print("🤖 주식 AI 에이전트 (별도 쓰레드)")
-        app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+        # Manual polling loop (more reliable than run_polling in threads)
+        async def polling():
+            await app.initialize()
+            await app.start()
+            await app.updater.start_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=True)
+            while True:
+                await asyncio.sleep(1)
+
+        loop.create_task(polling())
+        loop.run_forever()
     except Exception as e:
         print(f"❌ Telegram bot thread error: {e}")
+        import traceback
+        traceback.print_exc()
     finally:
-        _bot_app = None
-        loop.close()
+        try:
+            loop.close()
+        except Exception:
+            pass
