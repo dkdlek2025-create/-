@@ -26,6 +26,12 @@
 {% set targets = entry.targets if entry.targets else [0,0,0] %}
 
 <h2>{{ flag }} {{ result.name }} ({{ result.ticker }})</h2>
+{% set info = result.info or {} %}
+<p style="color:#8b949e;font-size:13px;margin-bottom:12px;">
+    {% if info.sector %}{{ info.sector }}{% endif %}
+    {% if info.industry %} · {{ info.industry }}{% endif %}
+    {% if info.sector or info.industry %}{% else %}주식 정보{% endif %}
+</p>
 
 <div class="stats">
     <div class="stat-card"><div class="num">{{ price.price }}</div><div class="label">현재가</div></div>
