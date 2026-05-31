@@ -91,6 +91,12 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.error(f"❌ Telegram bot failed: {e}")
 
+    # Clean up stuck scans
+    conn = db.get_db()
+    conn.execute("UPDATE scans SET status='failed', finished_at=datetime('now','localtime') WHERE status='running'")
+    conn.commit()
+    conn.close()
+
     # Start scheduler
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     scheduler = AsyncIOScheduler()
@@ -156,11 +162,12 @@ async def run_scan():
         loop = asyncio.get_event_loop()
         # Save top 20 each market so recommendations page has enough data
         from concurrent.futures import TimeoutError as FutureTimeout
+        # Limit scope for Railway free tier: top 150 KR + 150 US
         kr_fut = loop.run_in_executor(
-            None, lambda: finder.find_opportunities(market="korea", max_results=20, save_db=True)
+            None, lambda: finder.find_opportunities(market="korea", max_results=20, save_db=True, top_n=150)
         )
         us_fut = loop.run_in_executor(
-            None, lambda: finder.find_opportunities(market="us", max_results=20, save_db=True)
+            None, lambda: finder.find_opportunities(market="us", max_results=20, save_db=True, top_n=150)
         )
         try:
             opps_kr = await asyncio.wait_for(kr_fut, timeout=120)

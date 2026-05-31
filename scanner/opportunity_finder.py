@@ -153,9 +153,9 @@ class OpportunityFinder:
     def clear_cache(self):
         self._quick_cache.clear()
 
-    def _quick_scan_korea(self) -> list[dict]:
+    def _quick_scan_korea(self, top_n: int = 0) -> list[dict]:
         """Pass 1: Quick scan all Korean stocks for basic anomalies."""
-        kr_stocks = universe.get_all_kr()
+        kr_stocks = universe.get_all_kr(top_n=top_n)
         candidates = []
 
         # Filter tickers with dots (yfinance can't handle them)
@@ -242,9 +242,9 @@ class OpportunityFinder:
         print(f"  [Pass 1] 한국 {len(candidates)}개 후보 발견")
         return candidates
 
-    def _quick_scan_us(self) -> list[dict]:
+    def _quick_scan_us(self, top_n: int = 0) -> list[dict]:
         """Pass 1: Quick scan all US stocks."""
-        us_stocks = universe.get_all_us()
+        us_stocks = universe.get_all_us(top_n=top_n)
         us_stocks = [s for s in us_stocks if "." not in s["ticker"]]
         candidates = []
         total = len(us_stocks)
@@ -334,12 +334,14 @@ class OpportunityFinder:
 
     def find_opportunities(self, market: str = "all",
                            max_results: int = 5,
-                           save_db: bool = False) -> list[Opportunity]:
+                           save_db: bool = False,
+                           top_n: int = 0) -> list[Opportunity]:
         """
         Main entry point: find the best opportunities right now.
         market: "all", "korea", "us"
         max_results: max opportunities to return
         save_db: save scan results to database
+        top_n: limit stocks to scan (0 = all)
         """
         start_time = time.time()
         opportunities = []
@@ -348,9 +350,9 @@ class OpportunityFinder:
         # === PASS 1: Quick Scan ===
         all_candidates = []
         if market in ("all", "korea"):
-            all_candidates.extend(self._quick_scan_korea())
+            all_candidates.extend(self._quick_scan_korea(top_n=top_n))
         if market in ("all", "us"):
-            all_candidates.extend(self._quick_scan_us())
+            all_candidates.extend(self._quick_scan_us(top_n=top_n))
 
         if not all_candidates:
             print("  Pass 1 결과 없음")
