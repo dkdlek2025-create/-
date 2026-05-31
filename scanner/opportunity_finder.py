@@ -157,217 +157,122 @@ class OpportunityFinder:
         self._quick_cache.clear()
 
     def _quick_scan_korea(self, top_n: int = 0) -> list[dict]:
-        """Pass 1: Quick scan all Korean stocks for basic anomalies."""
-        kr_stocks = universe.get_all_kr(top_n=top_n)
-        candidates = []
-
-        # Filter tickers with dots (yfinance can't handle them)
+        """Pass 1: Quick scan Korean stocks via parallel Yahoo Finance API."""
+        limit = top_n or 300
+        kr_stocks = universe.get_all_kr(top_n=limit)
         kr_stocks = [s for s in kr_stocks if "." not in s["ticker"]]
-        total = len(kr_stocks)
-        logger.info(f"KR scan: {total} stocks")
-
+        logger.info(f"KR scan: {len(kr_stocks)} stocks (top {limit})")
         if not kr_stocks:
-            return candidates
+            return []
 
-        # Convert to yfinance tickers (append .KS / .KQ)
-        ticker_map = {}
-        for s in kr_stocks:
-            raw = s["ticker"]
-            suffix = ".KQ" if s.get("market") == "KOSDAQ" else ".KS"
-            ticker_map[raw + suffix] = raw
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from data.collector import _fetch_yahoo_chart
+        import threading
 
-        yf_tickers = list(ticker_map.keys())
+        candidates = []
+        lock = threading.Lock()
 
-        # --- Try yfinance batch download first ---
-        import requests, yfinance as yf
-        session = requests.Session()
-        session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
-        session.timeout = 60
-        yf._session = session
-
-        chunk_size = 50
-        for i in range(0, len(yf_tickers), chunk_size):
-            chunk = yf_tickers[i:i + chunk_size]
+        def _scan_one(stock: dict) -> None:
+            raw_t = stock["ticker"]
+            suffix = ".KQ" if stock.get("market") == "KOSDAQ" else ".KS"
             try:
-                df = yf.download(
-                    chunk, period="5d", interval="1d",
-                    group_by="ticker", progress=False, auto_adjust=True,
-                    timeout=60
-                )
-                if df.empty or df.isna().all().all():
-                    continue
-            except Exception:
-                continue
-
-            for yf_t in chunk:
-                try:
-                    raw_t = ticker_map[yf_t]
-                    s = next((x for x in kr_stocks if x["ticker"] == raw_t), {})
-                    if isinstance(df.columns, pd.MultiIndex):
-                        if yf_t not in df.columns.levels[0]:
-                            continue
-                        close = df.xs(yf_t, level=0, axis=1)["Close"].dropna()
-                        vol = df.xs(yf_t, level=0, axis=1)["Volume"].dropna()
-                    else:
-                        close = df["Close"].dropna()
-                        vol = df["Volume"].dropna()
-
-                    if len(close) < 3:
-                        continue
-
-                    latest_price = close.iloc[-1]
-                    prev_price = close.iloc[-2]
-                    change = ((latest_price - prev_price) / prev_price) * 100
-
-                    vol_latest = vol.iloc[-1] if not vol.empty else 0
-                    vol_avg = vol.tail(5).mean() if len(vol) >= 5 else vol_latest
-                    vol_ratio = vol_latest / vol_avg if vol_avg > 0 else 1
-
-                    # Quick RSI
-                    delta_close = close.diff()
-                    gain = delta_close.where(delta_close > 0, 0).rolling(14).mean()
-                    loss = (-delta_close).where(delta_close < 0, 0).rolling(14).mean()
-                    rs = gain / (loss + 1e-10)
-                    rsi_series = 100 - (100 / (1 + rs))
-                    rsi_val = rsi_series.iloc[-1] if not rsi_series.empty else 50
-
-                    if abs(change) >= 4 or vol_ratio >= 2.0 or rsi_val <= 32 or rsi_val >= 68:
+                df = _fetch_yahoo_chart(raw_t + suffix, range_days=5)
+                if len(df) < 3:
+                    return
+                close = df["Close"]
+                vol = df["Volume"]
+                latest = close.iloc[-1]
+                prev = close.iloc[-2]
+                change = ((latest - prev) / prev) * 100
+                vol_latest = vol.iloc[-1] if not vol.empty else 0
+                vol_avg = vol.tail(5).mean() if len(vol) >= 5 else vol_latest
+                vol_ratio = vol_latest / vol_avg if vol_avg > 0 else 1
+                delta = close.diff()
+                gain = delta.where(delta > 0, 0).rolling(14).mean()
+                loss = (-delta).where(delta < 0, 0).rolling(14).mean()
+                rs = gain / (loss + 1e-10)
+                rsi_series = 100 - (100 / (1 + rs))
+                rsi_val = rsi_series.iloc[-1] if not rsi_series.empty else 50
+                if abs(change) >= 4 or vol_ratio >= 2.0 or rsi_val <= 32 or rsi_val >= 68:
+                    with lock:
                         candidates.append({
                             "ticker": raw_t,
-                            "name": s.get("name", raw_t),
+                            "name": stock.get("name", raw_t),
                             "market": "korea",
                             "change": round(change, 1),
                             "volume_ratio": round(vol_ratio, 1),
                             "rsi": round(rsi_val, 1),
-                            "latest_price": round(latest_price, 0),
+                            "latest_price": round(latest, 0),
                         })
-                except Exception:
-                    continue
+            except Exception:
+                pass
 
-        # --- If yfinance produced no candidates, fallback: direct Yahoo Finance quote API ---
-        if not candidates:
-            logger.info("KR yfinance batch failed, falling back to direct API...")
-            fallback_stocks = kr_stocks[:500]  # Top 500 stocks
-            for s in fallback_stocks:
-                try:
-                    raw_t = s["ticker"]
-                    yf_t = ticker_map.get(raw_t + (".KQ" if s.get("market") == "KOSDAQ" else ".KS"))
-                    if not yf_t:
-                        continue
-                    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_t}?range=5d&interval=1d"
-                    r = session.get(url, timeout=20)
-                    r.raise_for_status()
-                    data = r.json()
-                    result = data.get("chart", {}).get("result", [None])[0]
-                    if not result:
-                        continue
-                    timestamps = result.get("timestamp", [])
-                    quotes = result.get("indicators", {}).get("quote", [{}])[0]
-                    if not timestamps or not quotes:
-                        continue
-                    close_prices = quotes.get("close", [])
-                    close_prices = [c for c in close_prices if c is not None]
-                    if len(close_prices) < 3:
-                        continue
-                    vol_prices = quotes.get("volume", [])
-                    vol_prices = [v for v in vol_prices if v is not None]
-                    latest_price = close_prices[-1]
-                    prev_price = close_prices[-2]
-                    change = ((latest_price - prev_price) / prev_price) * 100
-                    latest_vol = vol_prices[-1] if len(vol_prices) > 0 else 0
-                    avg_vol = sum(vol_prices[-5:]) / max(len(vol_prices[-5:]), 1) if len(vol_prices) >= 5 else latest_vol
-                    vol_ratio = latest_vol / avg_vol if avg_vol > 0 else 1
-
-                    if abs(change) >= 4 or vol_ratio >= 2.0:
-                        candidates.append({
-                            "ticker": raw_t,
-                            "name": s.get("name", raw_t),
-                            "market": "korea",
-                            "change": round(change, 1),
-                            "volume_ratio": round(vol_ratio, 1),
-                            "rsi": 50,
-                            "latest_price": round(latest_price, 0),
-                        })
-                except Exception:
-                    continue
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            futures = [ex.submit(_scan_one, s) for s in kr_stocks]
+            for i, f in enumerate(as_completed(futures)):
+                f.result()
+                if (i + 1) % 100 == 0:
+                    logger.info(f"  KR pass1: {i+1}/{len(kr_stocks)}")
 
         logger.info(f"KR pass1: {len(candidates)} candidates")
         return candidates
 
     def _quick_scan_us(self, top_n: int = 0) -> list[dict]:
-        """Pass 1: Quick scan all US stocks."""
-        us_stocks = universe.get_all_us(top_n=top_n)
+        """Pass 1: Quick scan US stocks via parallel Yahoo Finance API."""
+        limit = top_n or 503
+        us_stocks = universe.get_all_us(top_n=limit)
         us_stocks = [s for s in us_stocks if "." not in s["ticker"]]
+        logger.info(f"US scan: {len(us_stocks)} stocks (top {limit})")
+        if not us_stocks:
+            return []
+
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from data.collector import _fetch_yahoo_chart
+        import threading
+
         candidates = []
-        total = len(us_stocks)
-        logger.info(f"US scan: {total} stocks")
+        lock = threading.Lock()
 
-        import yfinance as yf
-        import requests
-        session = requests.Session()
-        session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
-        session.timeout = 60
-        yf._session = session
-
-        tickers_list = [s["ticker"] for s in us_stocks]
-
-        # Chunked batch download
-        chunk_size = 50
-        for i in range(0, len(tickers_list), chunk_size):
-            chunk = tickers_list[i:i + chunk_size]
+        def _scan_one(stock: dict) -> None:
+            ticker = stock["ticker"]
             try:
-                df = yf.download(
-                    chunk, period="5d", interval="1d",
-                    group_by="ticker", progress=False, auto_adjust=True,
-                    timeout=60
-                )
-                if df.empty:
-                    continue
-            except Exception:
-                continue
-
-            for ticker in chunk:
-                s = next((x for x in us_stocks if x["ticker"] == ticker), {})
-                try:
-                    if isinstance(df.columns, pd.MultiIndex):
-                        if ticker not in df.columns.levels[0]:
-                            continue
-                        close = df.xs(ticker, level=0, axis=1)["Close"].dropna()
-                        vol = df.xs(ticker, level=0, axis=1)["Volume"].dropna()
-                    else:
-                        close = df["Close"].dropna()
-                        vol = df["Volume"].dropna()
-
-                    if len(close) < 3:
-                        continue
-
-                    latest_price = close.iloc[-1]
-                    prev_price = close.iloc[-2]
-                    change = ((latest_price - prev_price) / prev_price) * 100
-
-                    vol_latest = vol.iloc[-1] if not vol.empty else 0
-                    vol_avg = vol.tail(5).mean() if len(vol) >= 5 else vol_latest
-                    vol_ratio = vol_latest / vol_avg if vol_avg > 0 else 1
-
-                    delta_close = close.diff()
-                    gain = delta_close.where(delta_close > 0, 0).rolling(14).mean()
-                    loss = (-delta_close).where(delta_close < 0, 0).rolling(14).mean()
-                    rs = gain / (loss + 1e-10)
-                    rsi_series = 100 - (100 / (1 + rs))
-                    rsi_val = rsi_series.iloc[-1] if not rsi_series.empty else 50
-
-                    if abs(change) >= 4 or vol_ratio >= 2.0 or rsi_val <= 32 or rsi_val >= 68:
+                df = _fetch_yahoo_chart(ticker, range_days=5)
+                if len(df) < 3:
+                    return
+                close = df["Close"]
+                vol = df["Volume"]
+                latest = close.iloc[-1]
+                prev = close.iloc[-2]
+                change = ((latest - prev) / prev) * 100
+                vol_latest = vol.iloc[-1] if not vol.empty else 0
+                vol_avg = vol.tail(5).mean() if len(vol) >= 5 else vol_latest
+                vol_ratio = vol_latest / vol_avg if vol_avg > 0 else 1
+                delta = close.diff()
+                gain = delta.where(delta > 0, 0).rolling(14).mean()
+                loss = (-delta).where(delta < 0, 0).rolling(14).mean()
+                rs = gain / (loss + 1e-10)
+                rsi_series = 100 - (100 / (1 + rs))
+                rsi_val = rsi_series.iloc[-1] if not rsi_series.empty else 50
+                if abs(change) >= 4 or vol_ratio >= 2.0 or rsi_val <= 32 or rsi_val >= 68:
+                    with lock:
                         candidates.append({
                             "ticker": ticker,
-                            "name": s.get("name", ticker),
+                            "name": stock.get("name", ticker),
                             "market": "us",
                             "change": round(change, 1),
                             "volume_ratio": round(vol_ratio, 1),
                             "rsi": round(rsi_val, 1),
-                            "latest_price": round(latest_price, 2),
+                            "latest_price": round(latest, 2),
                         })
-                except Exception:
-                    continue
+            except Exception:
+                pass
+
+        with ThreadPoolExecutor(max_workers=10) as ex:
+            futures = [ex.submit(_scan_one, s) for s in us_stocks]
+            for i, f in enumerate(as_completed(futures)):
+                f.result()
+                if (i + 1) % 100 == 0:
+                    logger.info(f"  US pass1: {i+1}/{len(us_stocks)}")
 
         logger.info(f"US pass1: {len(candidates)} candidates")
         return candidates
@@ -415,7 +320,7 @@ class OpportunityFinder:
         all_candidates.sort(key=lambda x: abs(x.get("change", 0)), reverse=True)
 
         # Limit Pass 2 candidates (max 40 to keep it fast)
-        pass2_candidates = all_candidates[:40]
+        pass2_candidates = all_candidates[:15]
         logger.info(f"Pass 2: analyzing {len(pass2_candidates)} candidates")
 
         # === PASS 2: Full Analysis ===

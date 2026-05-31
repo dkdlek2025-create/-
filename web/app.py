@@ -157,22 +157,18 @@ async def run_scan():
         # Save top 20 each market so recommendations page has enough data
         from concurrent.futures import TimeoutError as FutureTimeout
         # Scan all stocks (KR first, then US - sequential to avoid rate limits)
-        try:
-            opps_kr = await asyncio.wait_for(
-                loop.run_in_executor(None, lambda: finder.find_opportunities(
-                    market="korea", max_results=20, save_db=True)),
-                timeout=600)
-        except FutureTimeout:
-            logger.error("KR scan timed out after 600s")
-            opps_kr = []
-        try:
-            opps_us = await asyncio.wait_for(
-                loop.run_in_executor(None, lambda: finder.find_opportunities(
-                    market="us", max_results=20, save_db=True)),
-                timeout=600)
-        except FutureTimeout:
-            logger.error("US scan timed out after 600s")
-            opps_us = []
+        async def _scan(market: str, timeout: int = 900):
+            try:
+                return await asyncio.wait_for(
+                    loop.run_in_executor(None, lambda: finder.find_opportunities(
+                        market=market, max_results=20, save_db=True)),
+                    timeout=timeout)
+            except FutureTimeout:
+                logger.error(f"{market} scan timed out after {timeout}s")
+                return []
+
+        opps_kr = await _scan("korea")
+        opps_us = await _scan("us")
         opps = (opps_kr or []) + (opps_us or [])
         logger.info(f"✅ Scan done: kr={len(opps_kr or [])} us={len(opps_us or [])} total={len(opps)}")
         if opps:
