@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}기회 목록{% endblock %}
+{% block content %}
+<h1>🎯 기회 목록</h1>
+
+{% if opportunities %}
+<table>
+    <thead>
+        <tr>
+            <th>시장</th>
+            <th>종목</th>
+            <th>판정</th>
+            <th>확신도</th>
+            <th>종합 점수</th>
+            <th>추천 강도</th>
+            <th>차트</th>
+            <th>뉴스</th>
+            <th>근거</th>
+            <th>진입구간</th>
+            <th>익절</th>
+            <th>손절</th>
+            <th>R/R</th>
+            <th>발견시간</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for opp in opportunities %}
+        {% set score_pct = ((opp.score + 15) / 30 * 100) | int %}
+        <tr>
+            <td><span class="badge {{ 'badge-us' if opp.market == 'us' else 'badge-kr' }}">{{ '🇺🇸' if opp.market == 'us' else '🇰🇷' }}</span></td>
+            <td><strong><a href="/analyze?ticker={{ opp.ticker }}">{{ opp.name }}</a></strong><br><small>{{ opp.ticker }}</small></td>
+            <td><span class="badge {{ 'badge-buy' if opp.action in ('적극매수','매수','관심매수') else 'badge-hold' if opp.action == '관망' else 'badge-sell' }}">{{ opp.action }}</span></td>
+            <td><small>{{ opp.conviction }}</small></td>
+            <td><span class="badge badge-score">{{ opp.score }}/15</span></td>
+            <td>
+                <div class="bar-bg">
+                    <div class="bar-fill {{ 'bar-green' if score_pct >= 60 else 'bar-yellow' if score_pct >= 40 else 'bar-red' }}" style="width:{{ score_pct }}%"></div>
+                </div>
+                <small>{{ score_pct }}%</small>
+            </td>
+            <td><span class="tag {{ 'tag-positive' if opp.tech_score >= 0 else 'tag-negative' }}" style="background:{{ opp.tech_score|tech_color }}22;color:{{ opp.tech_score|tech_color }}">{{ opp.tech_score|tech_label }} ({{ "%+d"|format(opp.tech_score) }})</span></td>
+            <td><span class="tag {{ 'tag-positive' if opp.news_score_pct >= 60 else 'tag-negative' if opp.news_score_pct <= 40 else 'tag-neutral' }}">{{ opp.news_score_pct }}%</span></td>
+            <td><small>{{ opp.reason[:40] if opp.reason else '' }}</small></td>
+            <td><small>{{ opp.entry_zone[:25] if opp.entry_zone else 'N/A' }}</small></td>
+            <td><small>{{ opp.target[:30] if opp.target else 'N/A' }}</small></td>
+            <td><small>{{ opp.stop_loss[:25] if opp.stop_loss else 'N/A' }}</small></td>
+            <td>{{ opp.rr }}</td>
+            <td><small>{{ opp.created_at }}</small></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div class="detail-card" style="text-align:center;padding:40px;">
+    <p style="color:#8b949e;font-size:16px;">아직 발견된 기회가 없습니다.</p>
+    <p style="color:#484f58;font-size:13px;margin-top:8px;">30분마다 자동 스캔되며, 조건에 맞는 종목이 여기에 표시됩니다.</p>
+</div>
+{% endif %}
+{% endblock %}

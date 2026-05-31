@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% block title %}뉴스 분석{% endblock %}
+{% block content %}
+<h1>📰 뉴스 분석</h1>
+
+<form class="search-box" method="get" action="/news">
+    <input type="text" name="ticker" placeholder="회사명 또는 티커 입력 (예: 삼성전자, AAPL)" value="{{ query }}" autofocus>
+    <button type="submit" class="orange">뉴스 확인</button>
+</form>
+
+{% if error %}
+<div class="detail-card" style="border-color:#ff7b72;">
+    <p style="color:#ff7b72;">❌ {{ error }}</p>
+</div>
+{% endif %}
+
+{% if result and result.news_count > 0 %}
+{% set bullish = result.bullish_summary %}
+{% set bearish = result.bearish_summary %}
+
+<h2>{{ '🇺🇸' if result.ticker.isalpha() else '🇰🇷' }} {{ query }} 뉴스</h2>
+<div class="stats">
+    <div class="stat-card"><div class="num">{{ result.overall_score_pct }}%</div><div class="label">뉴스 강도</div></div>
+    <div class="stat-card"><div class="num" style="color:#3fb950;">{{ result.bullish_count }}</div><div class="label">호재</div></div>
+    <div class="stat-card"><div class="num" style="color:#ff7b72;">{{ result.bearish_count }}</div><div class="label">악재</div></div>
+    <div class="stat-card"><div class="num">{{ result.news_count }}</div><div class="label">전체 뉴스</div></div>
+</div>
+
+{% if bullish and bullish != '없음' %}
+<div class="detail-card" style="border-color:#3fb95040;">
+    <h3 style="color:#3fb950;">🟢 호재 요약</h3>
+    <p>{{ bullish }}</p>
+</div>
+{% endif %}
+
+{% if bearish and bearish != '없음' %}
+<div class="detail-card" style="border-color:#ff7b7240;">
+    <h3 style="color:#ff7b72;">🔴 악재 요약</h3>
+    <p>{{ bearish }}</p>
+</div>
+{% endif %}
+
+{% if result.headlines %}
+<div class="detail-card">
+    <h3>📋 전체 헤드라인</h3>
+    {% for h in result.headlines %}
+    <div style="padding:8px 0; border-bottom:1px solid #1c2128;">
+        <div>
+            <span class="tag {{ 'tag-positive' if h.class == '호재' else 'tag-negative' if h.class == '악재' else 'tag-neutral' }}">{{ h.class }}</span>
+            <strong>{{ h.title }}</strong>
+        </div>
+        {% if h.key_reason %}
+        <div style="color:#8b949e;font-size:12px;margin-top:2px;padding-left:8px;">→ {{ h.key_reason }}</div>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endif %}
+
+{% if all_news %}
+<h2 style="margin-top:32px;">📊 종목별 뉴스 현황</h2>
+<table>
+    <thead>
+        <tr>
+            <th>종목</th>
+            <th>뉴스 강도</th>
+            <th>호재</th>
+            <th>악재</th>
+            <th>호재 요약</th>
+            <th>악재 요약</th>
+            <th>업데이트</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for n in all_news %}
+        <tr>
+            <td><strong><a href="/news?ticker={{ n.ticker }}">{{ n.ticker }}</a></strong></td>
+            <td>
+                <div class="bar-bg">
+                    <div class="bar-fill {{ 'bar-green' if n.overall_score_pct >= 60 else 'bar-yellow' if n.overall_score_pct >= 40 else 'bar-red' }}" style="width:{{ n.overall_score_pct }}%"></div>
+                </div>
+                <small>{{ n.overall_score_pct }}%</small>
+            </td>
+            <td style="color:#3fb950;">{{ n.bullish_count }}</td>
+            <td style="color:#ff7b72;">{{ n.bearish_count }}</td>
+            <td><small>{{ n.bullish_summary[:50] if n.bullish_summary else '-' }}</small></td>
+            <td><small>{{ n.bearish_summary[:50] if n.bearish_summary else '-' }}</small></td>
+            <td><small>{{ n.cached_at }}</small></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

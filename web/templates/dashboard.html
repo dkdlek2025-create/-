@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}대시보드{% endblock %}
+{% block content %}
+<h1>📊 대시보드</h1>
+
+<div class="stats">
+    <div class="stat-card"><div class="num">{{ stats.total_scans }}</div><div class="label">전체 스캔</div></div>
+    <div class="stat-card"><div class="num">{{ stats.total_opportunities }}</div><div class="label">발견된 기회</div></div>
+    <div class="stat-card"><div class="num">{{ stats.total_analyses }}</div><div class="label">분석 횟수</div></div>
+    <div class="stat-card"><div class="num" style="font-size:14px;">{{ stats.last_scan.started_at if stats.last_scan else '없음' }}</div><div class="label">마지막 스캔</div></div>
+</div>
+
+<div class="action-buttons">
+    <a href="/opportunities">🎯 기회 목록</a>
+    <a href="/analyze">🔍 종목 분석</a>
+    <a href="/news">📰 뉴스</a>
+</div>
+
+{% if opportunities %}
+<h2>🎯 최신 기회 ({{ opportunities|length }}개)</h2>
+<table>
+    <thead>
+        <tr>
+            <th>시장</th>
+            <th>종목</th>
+            <th>판정</th>
+            <th>점수</th>
+            <th>추천 강도</th>
+            <th>차트</th>
+            <th>뉴스</th>
+            <th>진입구간</th>
+            <th>손절</th>
+            <th>R/R</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for opp in opportunities %}
+        {% set score_pct = ((opp.score + 15) / 30 * 100) | int %}
+        <tr>
+            <td><span class="badge {{ 'badge-us' if opp.market == 'us' else 'badge-kr' }}">{{ '🇺🇸' if opp.market == 'us' else '🇰🇷' }}</span></td>
+            <td><strong>{{ opp.name }}</strong><br><small>{{ opp.ticker }}</small></td>
+            <td><span class="badge {{ 'badge-buy' if opp.action in ('적극매수','매수','관심매수') else 'badge-hold' if opp.action == '관망' else 'badge-sell' }}">{{ opp.action }}</span></td>
+            <td><span class="badge badge-score">{{ opp.score }}/15</span></td>
+            <td>
+                <div class="bar-bg">
+                    <div class="bar-fill {{ 'bar-green' if score_pct >= 60 else 'bar-yellow' if score_pct >= 40 else 'bar-red' }}" style="width:{{ score_pct }}%"></div>
+                </div>
+                <small>{{ score_pct }}%</small>
+            </td>
+            <td><span class="tag" style="background:{{ opp.tech_score|tech_color }}22;color:{{ opp.tech_score|tech_color }}">{{ opp.tech_score|tech_label }} ({{ "%+d"|format(opp.tech_score) }})</span></td>
+            <td><span class="tag {{ 'tag-positive' if opp.news_score_pct >= 60 else 'tag-negative' if opp.news_score_pct <= 40 else 'tag-neutral' }}">{{ opp.news_score_pct }}%</span></td>
+            <td><small>{{ opp.entry_zone[:30] if opp.entry_zone else 'N/A' }}</small></td>
+            <td><small>{{ opp.stop_loss[:30] if opp.stop_loss else 'N/A' }}</small></td>
+            <td>{{ opp.rr }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if analyses %}
+<h2>🕐 최근 분석 ({{ analyses|length }}개)</h2>
+<table>
+    <thead>
+        <tr>
+            <th>시장</th>
+            <th>종목</th>
+            <th>판정</th>
+            <th>점수</th>
+            <th>차트</th>
+            <th>뉴스</th>
+            <th>근거</th>
+            <th>시간</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for a in analyses %}
+        <tr>
+            <td><span class="badge {{ 'badge-us' if a.market == 'US' else 'badge-kr' }}">{{ '🇺🇸' if a.market == 'US' else '🇰🇷' }}</span></td>
+            <td><strong>{{ a.name }}</strong><br><small>{{ a.ticker }}</small></td>
+            <td><span class="badge {{ 'badge-buy' if a.action in ('적극매수','매수','관심매수') else 'badge-hold' if a.action == '관망' else 'badge-sell' }}">{{ a.action }}</span></td>
+            <td><span class="badge badge-score">{{ a.score }}/15 ({{ a.score_pct }}%)</span></td>
+            <td><span class="tag" style="background:{{ a.tech_score|tech_color }}22;color:{{ a.tech_score|tech_color }}">{{ a.tech_score|tech_label }} ({{ "%+d"|format(a.tech_score) }})</span></td>
+            <td><span class="tag {{ 'tag-positive' if a.news_score >= 0 else 'tag-negative' }}">{{ "%+.1f"|format(a.news_score) }}</span></td>
+            <td><small>{{ a.reason[:50] if a.reason else '' }}</small></td>
+            <td><small>{{ a.created_at }}</small></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if not opportunities and not analyses %}
+<div class="detail-card" style="text-align:center;padding:40px;">
+    <p style="color:#8b949e;font-size:16px;">아직 데이터가 없습니다.</p>
+    <p style="color:#484f58;font-size:13px;margin-top:8px;">
+        스캔이 실행되거나 분석을 수행하면 여기에 결과가 표시됩니다.
+    </p>
+</div>
+{% endif %}
+{% endblock %}

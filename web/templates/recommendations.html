@@ -1,0 +1,152 @@
+{% extends "base.html" %}
+{% block title %}추천 종목{% endblock %}
+{% block content %}
+<h1>🎯 추천 종목</h1>
+
+<div class="stats">
+    <div class="stat-card"><div class="num">{{ stats.total_scans }}</div><div class="label">전체 스캔</div></div>
+    <div class="stat-card"><div class="num">{{ stats.total_opportunities }}</div><div class="label">발견된 기회</div></div>
+    <div class="stat-card"><div class="num" style="font-size:14px;">{{ stats.last_scan.started_at if stats.last_scan else '없음' }}</div><div class="label">마지막 스캔</div></div>
+    <div class="stat-card">
+        <button onclick="triggerScan()" style="background:#238636;border:none;color:#fff;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:13px;">🔄 새로 스캔</button>
+        <div class="label" id="scanStatus">클릭하면 전체 2500종목 분석 시작</div>
+    </div>
+</div>
+
+{% if korea or us %}
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+    <!-- Korea -->
+    <div>
+        <h2>🇰🇷 국내 주식 TOP 20</h2>
+        {% if korea %}
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>종목</th>
+                    <th>판정</th>
+                    <th>추천 강도</th>
+                    <th>차트</th>
+                    <th>뉴스</th>
+                    <th>진입</th>
+                    <th>R/R</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for opp in korea %}
+                {% set sp = ((opp.score + 15) / 30 * 100) | int %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td><strong><a href="/analyze?ticker={{ opp.ticker }}">{{ opp.name }}</a></strong><br><small>{{ opp.ticker }}</small></td>
+                    <td><span class="badge {{ 'badge-buy' if opp.action in ('적극매수','매수','관심매수') else 'badge-hold' if opp.action == '관망' else 'badge-sell' }}">{{ opp.action }}</span></td>
+                    <td>
+                        <div style="font-size:20px;font-weight:700;color:{{ '#3fb950' if sp >= 60 else '#d29922' if sp >= 40 else '#ff7b72' }};">{{ sp }}%</div>
+                        <div class="bar-bg">
+                            <div class="bar-fill {{ 'bar-green' if sp >= 60 else 'bar-yellow' if sp >= 40 else 'bar-red' }}" style="width:{{ sp }}%"></div>
+                        </div>
+                    </td>
+                    <td><span class="tag" style="background:{{ opp.tech_score|tech_color }}22;color:{{ opp.tech_score|tech_color }}">{{ opp.tech_score|tech_label }} ({{ "%+d"|format(opp.tech_score) }})</span></td>
+                    <td><span class="tag {{ 'tag-positive' if opp.news_score_pct >= 60 else 'tag-negative' if opp.news_score_pct <= 40 else 'tag-neutral' }}">{{ opp.news_score_pct }}%</span></td>
+                    <td><small>{{ opp.entry_zone[:20] if opp.entry_zone else '-' }}</small></td>
+                    <td>{{ opp.rr }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="detail-card" style="text-align:center;padding:20px;">
+            <p style="color:#8b949e;">아직 데이터 없음</p>
+            <p style="color:#484f58;font-size:12px;">위 🔄 버튼으로 스캔 실행</p>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- US -->
+    <div>
+        <h2>🇺🇸 미국 주식 TOP 20</h2>
+        {% if us %}
+        <table>
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>종목</th>
+                    <th>판정</th>
+                    <th>추천 강도</th>
+                    <th>차트</th>
+                    <th>뉴스</th>
+                    <th>진입</th>
+                    <th>R/R</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for opp in us %}
+                {% set sp = ((opp.score + 15) / 30 * 100) | int %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td><strong><a href="/analyze?ticker={{ opp.ticker }}">{{ opp.name }}</a></strong><br><small>{{ opp.ticker }}</small></td>
+                    <td><span class="badge {{ 'badge-buy' if opp.action in ('적극매수','매수','관심매수') else 'badge-hold' if opp.action == '관망' else 'badge-sell' }}">{{ opp.action }}</span></td>
+                    <td>
+                        <div style="font-size:20px;font-weight:700;color:{{ '#3fb950' if sp >= 60 else '#d29922' if sp >= 40 else '#ff7b72' }};">{{ sp }}%</div>
+                        <div class="bar-bg">
+                            <div class="bar-fill {{ 'bar-green' if sp >= 60 else 'bar-yellow' if sp >= 40 else 'bar-red' }}" style="width:{{ sp }}%"></div>
+                        </div>
+                    </td>
+                    <td><span class="tag" style="background:{{ opp.tech_score|tech_color }}22;color:{{ opp.tech_score|tech_color }}">{{ opp.tech_score|tech_label }} ({{ "%+d"|format(opp.tech_score) }})</span></td>
+                    <td><span class="tag {{ 'tag-positive' if opp.news_score_pct >= 60 else 'tag-negative' if opp.news_score_pct <= 40 else 'tag-neutral' }}">{{ opp.news_score_pct }}%</span></td>
+                    <td><small>{{ opp.entry_zone[:20] if opp.entry_zone else '-' }}</small></td>
+                    <td>{{ opp.rr }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div class="detail-card" style="text-align:center;padding:20px;">
+            <p style="color:#8b949e;">아직 데이터 없음</p>
+            <p style="color:#484f58;font-size:12px;">위 🔄 버튼으로 스캔 실행</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{% if not korea and not us %}
+<div class="detail-card" style="text-align:center;padding:40px;margin-top:16px;">
+    <p style="color:#8b949e;font-size:16px;">스캔 데이터가 없습니다.</p>
+    <p style="color:#484f58;font-size:13px;margin-top:8px;">
+        위 🔄 버튼을 눌러 2500종목을 분석하면<br>
+        조건에 맞는 종목만 골라서 여기에 표시됩니다.
+    </p>
+</div>
+{% endif %}
+
+<script>
+function triggerScan() {
+    var btn = document.querySelector('button');
+    var status = document.getElementById('scanStatus');
+    btn.disabled = true;
+    btn.textContent = '⏳ 스캔 중...';
+    status.textContent = '약 30~60초 소요 (2500종목 분석)';
+
+    fetch('/api/scan')
+        .then(r => r.json())
+        .then(data => {
+            // Poll for completion
+            var poll = setInterval(function() {
+                fetch('/api/scan/status')
+                    .then(r => r.json())
+                    .then(s => {
+                        if (s.last_scan && s.last_scan.finished_at) {
+                            clearInterval(poll);
+                            location.reload();
+                        }
+                    });
+            }, 3000);
+            // Timeout after 90s
+            setTimeout(function() {
+                clearInterval(poll);
+                location.reload();
+            }, 90000);
+        });
+}
+</script>
+{% endblock %}

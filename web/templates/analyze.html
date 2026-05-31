@@ -1,0 +1,144 @@
+{% extends "base.html" %}
+{% block title %}종목 분석{% endblock %}
+{% block content %}
+<h1>🔍 종목 분석</h1>
+
+<form class="search-box" method="get" action="/analyze">
+    <input type="text" name="ticker" placeholder="회사명 또는 티커 입력 (예: 삼성전자, AAPL)" value="{{ query }}" autofocus>
+    <button type="submit">분석</button>
+</form>
+
+{% if error %}
+<div class="detail-card" style="border-color:#ff7b72;">
+    <p style="color:#ff7b72;">❌ {{ error }}</p>
+</div>
+{% endif %}
+
+{% if result and 'error' not in result %}
+{% set dec = result.decision %}
+{% set entry = result.entry_exit %}
+{% set news = result.news %}
+{% set price = result.price_data %}
+{% set tech = result.technical %}
+{% set cs = dec.combined_score %}
+{% set score_pct = ((cs + 15) / 30 * 100) | int %}
+{% set flag = '🇺🇸' if result.market == 'US' else '🇰🇷' %}
+{% set targets = entry.targets if entry.targets else [0,0,0] %}
+
+<h2>{{ flag }} {{ result.name }} ({{ result.ticker }})</h2>
+
+<div class="stats">
+    <div class="stat-card"><div class="num">{{ price.price }}</div><div class="label">현재가</div></div>
+    <div class="stat-card"><div class="num" style="color:{{ '#3fb950' if price.change >= 0 else '#ff7b72' }}">{{ "%+.2f"|format(price.change) }}%</div><div class="label">변동</div></div>
+    <div class="stat-card"><div class="num">{{ score_pct }}%</div><div class="label">추천 강도</div></div>
+    <div class="stat-card"><div class="num" style="font-size:16px;">{{ dec.action }}</div><div class="label">판정 ({{ dec.conviction }})</div></div>
+</div>
+
+<div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px;">
+    <!-- Technical Analysis -->
+    <div class="detail-card">
+        <h3>📊 차트 분석</h3>
+        <div class="row"><span>신호</span><span class="val">{{ tech.signal }}</span></div>
+        <div class="row"><span>점수</span><span class="val">{{ tech.score }}</span></div>
+        <div class="row"><span>RSI</span><span class="val">{{ tech.rsi }}</span></div>
+        <div class="row"><span>MACD</span><span class="val">{{ tech.macd }}</span></div>
+        {% if tech.reasons %}
+        <div class="row"><span>근거</span><span class="val"><small>{{ tech.reasons | join(', ') }}</small></span></div>
+        {% endif %}
+        <div class="row"><span>20일 고가</span><span class="val">{{ price.high_20d }}</span></div>
+        <div class="row"><span>20일 저가</span><span class="val">{{ price.low_20d }}</span></div>
+        <div class="row"><span>차트 점수</span><span class="val" style="color:{{ dec.tech_score|tech_color }}">{{ dec.tech_score|tech_label }} ({{ dec.tech_score }}/15)</span></div>
+    </div>
+
+    <!-- News -->
+    <div class="detail-card">
+        <h3>📰 뉴스 분석</h3>
+        <div class="row"><span>종합</span><span class="val">{{ news.overall }} ({{ news.overall_score_pct }}%)</span></div>
+        <div class="row"><span>호재</span><span class="val" style="color:#3fb950;">{{ news.bullish_count }}건</span></div>
+        <div class="row"><span>악재</span><span class="val" style="color:#ff7b72;">{{ news.bearish_count }}건</span></div>
+        <div class="row"><span>뉴스 점수</span><span class="val">{{ "%+.1f"|format(news.overall_score) }}</span></div>
+        {% if news.bullish_summary and news.bullish_summary != '없음' %}
+        <div class="row"><span>🟢 호재 요약</span><span class="val"><small>{{ news.bullish_summary[:80] }}</small></span></div>
+        {% endif %}
+        {% if news.bearish_summary and news.bearish_summary != '없음' %}
+        <div class="row"><span>🔴 악재 요약</span><span class="val"><small>{{ news.bearish_summary[:80] }}</small></span></div>
+        {% endif %}
+        {% if news.headlines %}
+        <div style="margin-top:8px;">
+            {% for h in news.headlines[:4] %}
+            <div style="padding:4px 0; font-size:12px; border-bottom:1px solid #1c2128;">
+                <span class="tag {{ 'tag-positive' if h.class == '호재' else 'tag-negative' if h.class == '악재' else 'tag-neutral' }}">{{ h.class }}</span>
+                {{ h.title[:60] }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Combined Decision -->
+    <div class="detail-card">
+        <h3>⚖️ 종합 판정</h3>
+        <div class="row"><span>판정</span><span class="val" style="font-size:16px;">
+            <span class="badge {{ 'badge-buy' if dec.action in ('적극매수','매수','관심매수') else 'badge-hold' if dec.action == '관망' else 'badge-sell' }}">{{ dec.action }}</span>
+        </span></div>
+        <div class="row"><span>확신도</span><span class="val">{{ dec.conviction }}</span></div>
+        <div class="row"><span>종합 점수</span><span class="val">{{ dec.combined_score }}/15</span></div>
+        <div class="row"><span>추천 강도</span><span class="val">{{ score_pct }}%</span></div>
+        <div class="row"><span>근거</span><span class="val">{{ dec.reason }}</span></div>
+        {% if dec.chart_vs_news_conflict %}
+        <div class="row"><span>⚠️ 충돌</span><span class="val" style="color:#d29922;">{{ dec.chart_vs_news_conflict }}</span></div>
+        {% endif %}
+    </div>
+
+    <!-- Entry/Exit -->
+    <div class="detail-card">
+        <h3>🔥 실행 가이드</h3>
+        <div class="row"><span>💰 진입 구간</span><span class="val">{{ entry.entry_zone_text }}</span></div>
+        <div class="row"><span>🎯 1차 익절 (50%)</span><span class="val" style="color:#3fb950;">{{ '{:,}'.format(targets[0]) if targets[0] else 'N/A' }}</span></div>
+        <div class="row"><span>🎯 2차 익절 (30%)</span><span class="val" style="color:#3fb950;">{{ '{:,}'.format(targets[1]) if targets[1] else 'N/A' }}</span></div>
+        <div class="row"><span>🎯 3차 익절 (20%)</span><span class="val" style="color:#3fb950;">{{ '{:,}'.format(targets[2]) if targets[2] else 'N/A' }}</span></div>
+        <div class="row"><span>🛑 손절</span><span class="val" style="color:#ff7b72;">{{ entry.stop_loss_text }}</span></div>
+        <div class="row"><span>⚖️ R/R</span><span class="val">{{ entry.risk_reward_ratio }}</span></div>
+    </div>
+</div>
+
+{% if dec.chart_vs_news_conflict %}
+<div class="detail-card" style="border-color:#d29922;margin-top:16px;">
+    <p style="color:#d29922;">⚠️ {{ dec.chart_vs_news_conflict }}</p>
+</div>
+{% endif %}
+
+{% endif %}
+
+{% if analyses %}
+<h2 style="margin-top:32px;">🕐 최근 분석 기록</h2>
+<table>
+    <thead>
+        <tr>
+            <th>시장</th>
+            <th>종목</th>
+            <th>판정</th>
+            <th>점수</th>
+            <th>차트</th>
+            <th>뉴스</th>
+            <th>근거</th>
+            <th>시간</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for a in analyses[:20] %}
+        <tr>
+            <td><span class="badge {{ 'badge-us' if a.market == 'US' else 'badge-kr' }}">{{ '🇺🇸' if a.market == 'US' else '🇰🇷' }}</span></td>
+            <td><strong><a href="/analyze?ticker={{ a.ticker }}">{{ a.name }}</a></strong><br><small>{{ a.ticker }}</small></td>
+            <td><span class="badge {{ 'badge-buy' if a.action in ('적극매수','매수','관심매수') else 'badge-hold' if a.action == '관망' else 'badge-sell' }}">{{ a.action }}</span></td>
+            <td><span class="badge badge-score">{{ a.score_pct }}%</span></td>
+            <td><span class="tag" style="background:{{ a.tech_score|tech_color }}22;color:{{ a.tech_score|tech_color }}">{{ a.tech_score|tech_label }} ({{ "%+d"|format(a.tech_score) }})</span></td>
+            <td><span class="tag {{ 'tag-positive' if a.news_score >= 0 else 'tag-negative' }}">{{ "%+.1f"|format(a.news_score) }}</span></td>
+            <td><small>{{ a.reason[:50] if a.reason else '' }}</small></td>
+            <td><small>{{ a.created_at }}</small></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+{% endblock %}

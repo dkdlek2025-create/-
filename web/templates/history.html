@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}히스토리{% endblock %}
+{% block content %}
+<h1>📜 히스토리</h1>
+
+{% if scans %}
+<h2>📡 스캔 내역</h2>
+<table>
+    <thead>
+        <tr>
+            <th>시작 시간</th>
+            <th>종료 시간</th>
+            <th>스캔 종목</th>
+            <th>발견 기회</th>
+            <th>상태</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for s in scans %}
+        <tr>
+            <td>{{ s.started_at }}</td>
+            <td>{{ s.finished_at if s.finished_at else '진행중' }}</td>
+            <td>{{ s.total_scanned }}</td>
+            <td>{{ s.opportunities_found }}</td>
+            <td>
+                <span class="badge {{ 'badge-buy' if s.status == 'completed' else 'badge-hold' if s.status == 'running' else 'badge-sell' }}">
+                    {{ '완료' if s.status == 'completed' else '진행중' if s.status == 'running' else '실패' }}
+                </span>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if analyses %}
+<h2 style="margin-top:32px;">🔍 분석 기록</h2>
+<table>
+    <thead>
+        <tr>
+            <th>시장</th>
+            <th>종목</th>
+            <th>판정</th>
+            <th>점수</th>
+            <th>%</th>
+            <th>차트</th>
+            <th>뉴스</th>
+            <th>근거</th>
+            <th>시간</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for a in analyses %}
+        <tr>
+            <td><span class="badge {{ 'badge-us' if a.market == 'US' else 'badge-kr' }}">{{ '🇺🇸' if a.market == 'US' else '🇰🇷' }}</span></td>
+            <td><strong><a href="/analyze?ticker={{ a.ticker }}">{{ a.name }}</a></strong><br><small>{{ a.ticker }}</small></td>
+            <td><span class="badge {{ 'badge-buy' if a.action in ('적극매수','매수','관심매수') else 'badge-hold' if a.action == '관망' else 'badge-sell' }}">{{ a.action }}</span></td>
+            <td><span class="badge badge-score">{{ a.score }}/15</span></td>
+            <td>{{ a.score_pct }}%</td>
+            <td><span class="tag" style="background:{{ a.tech_score|tech_color }}22;color:{{ a.tech_score|tech_color }}">{{ a.tech_score|tech_label }} ({{ "%+d"|format(a.tech_score) }})</span></td>
+            <td><span class="tag {{ 'tag-positive' if a.news_score >= 0 else 'tag-negative' }}">{{ "%+.1f"|format(a.news_score) }}</span></td>
+            <td><small>{{ a.reason[:60] if a.reason else '' }}</small></td>
+            <td><small>{{ a.created_at }}</small></td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endif %}
+
+{% if not scans and not analyses %}
+<div class="detail-card" style="text-align:center;padding:40px;">
+    <p style="color:#8b949e;font-size:16px;">아직 기록이 없습니다.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock AI Agent - {% block title %}대시보드{% endblock %}</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; }
+        .layout { display: flex; min-height: 100vh; }
+        .sidebar { width: 220px; background: #161b22; padding: 20px 0; border-right: 1px solid #30363d; flex-shrink: 0; }
+        .sidebar h2 { color: #58a6ff; padding: 0 20px 20px; font-size: 16px; border-bottom: 1px solid #30363d; margin-bottom: 10px; }
+        .sidebar a { display: block; padding: 10px 20px; color: #8b949e; text-decoration: none; font-size: 14px; transition: 0.2s; }
+        .sidebar a:hover, .sidebar a.active { background: #1c2128; color: #58a6ff; }
+        .content { flex: 1; padding: 24px; overflow-x: auto; }
+        h1 { color: #58a6ff; margin-bottom: 20px; font-size: 24px; }
+        .stats { display: flex; gap: 16px; margin-bottom: 24px; flex-wrap: wrap; }
+        .stat-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px 20px; min-width: 140px; }
+        .stat-card .num { font-size: 28px; font-weight: 700; color: #58a6ff; }
+        .stat-card .label { font-size: 12px; color: #8b949e; margin-top: 4px; }
+        table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #30363d; font-size: 13px; }
+        th { background: #161b22; color: #58a6ff; font-weight: 600; white-space: nowrap; }
+        tr:hover { background: #1c2128; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+        .badge-us { background: #1f3a5f; color: #58a6ff; }
+        .badge-kr { background: #3d1f1f; color: #ff7b72; }
+        .badge-buy { background: #1a4a1a; color: #3fb950; }
+        .badge-sell { background: #4a1a1a; color: #ff7b72; }
+        .badge-hold { background: #4a3a0a; color: #d29922; }
+        .badge-score { background: #1c2128; color: #8b949e; }
+        .bar-bg { background: #30363d; border-radius: 4px; height: 8px; width: 100px; display: inline-block; vertical-align: middle; }
+        .bar-fill { height: 8px; border-radius: 4px; }
+        .bar-green { background: #3fb950; }
+        .bar-yellow { background: #d29922; }
+        .bar-red { background: #ff7b72; }
+        .search-box { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+        .search-box input { flex: 1; min-width: 200px; padding: 8px 12px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 14px; }
+        .search-box input:focus { outline: none; border-color: #58a6ff; }
+        .search-box button { padding: 8px 20px; background: #238636; border: none; border-radius: 6px; color: #fff; cursor: pointer; font-size: 14px; }
+        .search-box button:hover { background: #2ea043; }
+        .search-box button.orange { background: #d29922; }
+        .search-box button.orange:hover { background: #e3b341; }
+        a { color: #58a6ff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .detail-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+        .detail-card h3 { color: #58a6ff; margin-bottom: 12px; font-size: 16px; }
+        .detail-card .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #1c2128; font-size: 13px; }
+        .detail-card .row:last-child { border: none; }
+        .detail-card .row .val { color: #e6edf3; font-weight: 500; }
+        .tag { display: inline-block; padding: 1px 6px; border-radius: 4px; font-size: 11px; margin-right: 4px; }
+        .tag-positive { background: #1a4a1a; color: #3fb950; }
+        .tag-negative { background: #4a1a1a; color: #ff7b72; }
+        .tag-neutral { background: #3a3a1a; color: #d29922; }
+        .action-buttons { display: flex; gap: 8px; margin-bottom: 20px; }
+        .action-buttons a { padding: 8px 16px; background: #21262d; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-size: 13px; text-decoration: none; }
+        .action-buttons a:hover, .action-buttons a.active { background: #1c2128; border-color: #58a6ff; color: #58a6ff; }
+        .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #30363d; color: #484f58; font-size: 12px; }
+        @media (max-width: 768px) { .sidebar { display: none; } .content { padding: 16px; } }
+    </style>
+</head>
+<body>
+<div class="layout">
+    <nav class="sidebar">
+        <h2>🤖 Stock AI</h2>
+        <a href="/" class="{% if request.url.path == '/' %}active{% endif %}">📊 대시보드</a>
+        <a href="/recommendations" class="{% if request.url.path == '/recommendations' %}active{% endif %}">🎯 추천 종목</a>
+        <a href="/opportunities" class="{% if request.url.path == '/opportunities' %}active{% endif %}">📋 기회 목록</a>
+        <a href="/analyze" class="{% if request.url.path == '/analyze' %}active{% endif %}">🔍 분석</a>
+        <a href="/news" class="{% if request.url.path == '/news' %}active{% endif %}">📰 뉴스</a>
+        <a href="/history" class="{% if request.url.path == '/history' %}active{% endif %}">📜 히스토리</a>
+    </nav>
+    <main class="content">
+        {% block content %}{% endblock %}
+        <div class="footer">Stock AI Agent | 데이터는 실시간이 아닐 수 있습니다</div>
+    </main>
+</div>
+</body>
+</html>
