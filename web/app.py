@@ -163,22 +163,22 @@ async def run_scan():
         loop = asyncio.get_event_loop()
         # Save top 20 each market so recommendations page has enough data
         from concurrent.futures import TimeoutError as FutureTimeout
-        # Limit scope for Railway free tier: top 150 KR + 150 US
-        kr_fut = loop.run_in_executor(
-            None, lambda: finder.find_opportunities(market="korea", max_results=20, save_db=True, top_n=150)
-        )
-        us_fut = loop.run_in_executor(
-            None, lambda: finder.find_opportunities(market="us", max_results=20, save_db=True, top_n=150)
-        )
+        # Scan all stocks (KR first, then US - sequential to avoid rate limits)
         try:
-            opps_kr = await asyncio.wait_for(kr_fut, timeout=120)
+            opps_kr = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: finder.find_opportunities(
+                    market="korea", max_results=20, save_db=True)),
+                timeout=300)
         except FutureTimeout:
-            logger.error("KR scan timed out after 120s")
+            logger.error("KR scan timed out after 300s")
             opps_kr = []
         try:
-            opps_us = await asyncio.wait_for(us_fut, timeout=120)
+            opps_us = await asyncio.wait_for(
+                loop.run_in_executor(None, lambda: finder.find_opportunities(
+                    market="us", max_results=20, save_db=True)),
+                timeout=300)
         except FutureTimeout:
-            logger.error("US scan timed out after 120s")
+            logger.error("US scan timed out after 300s")
             opps_us = []
         opps = (opps_kr or []) + (opps_us or [])
         if opps:
