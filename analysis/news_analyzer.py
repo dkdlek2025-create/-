@@ -2,8 +2,10 @@
 News Analyzer - Collects news, classifies as good/bad, and generates summary.
 No LLM required - keyword-based classification with scoring.
 """
+import re
 from datetime import datetime, timedelta
 from typing import Optional
+import requests as _requests
 from data.news import get_us_news, get_korea_news
 
 
@@ -45,6 +47,29 @@ BEARISH_KEYWORDS = {
     "investigation": 2, "recall": 3, "fine": 2, "regulatory": 2,
     "weak": 1, "fall": 1, "cut": 2, "worst": 2, "concern": 1,
 }
+
+
+def _translate_to_korean(text: str) -> str:
+    """Translate English text to Korean using Google Translate (free)."""
+    if not text:
+        return text
+    # Detect if translation is needed: more English chars than Korean
+    en = sum(1 for c in text if 'a' <= c.lower() <= 'z')
+    kr = sum(1 for c in text if '\uac00' <= c <= '\ud7a3')
+    if kr > en or en < 5:
+        return text  # Already Korean or too short
+    try:
+        url = "https://translate.googleapis.com/translate_a/single"
+        params = {"client": "gtx", "sl": "auto", "tl": "ko", "dt": "t", "q": text[:1000]}
+        r = _requests.get(url, params=params, timeout=10,
+                          headers={"User-Agent": "Mozilla/5.0"})
+        r.raise_for_status()
+        result = r.json()
+        if result and result[0] and result[0][0]:
+            return result[0][0][0] or text
+    except Exception:
+        pass
+    return text
 
 
 class NewsAnalyzer:
@@ -150,6 +175,16 @@ class NewsAnalyzer:
 
         # Convert to percentage: 0~100% (50% = neutral)
         score_pct = max(0, min(100, int(((avg_score + 3) / 6) * 100)))
+
+        # Translate English titles to Korean (US stocks)
+        if market == "us":
+            for h in classified:
+                h["original_title"] = h["title"]
+                h["title"] = _translate_to_korean(h["title"])
+            if bullish_summary and bullish_summary != "없음":
+                bullish_summary = _translate_to_korean(bullish_summary[:200])
+            if bearish_summary and bearish_summary != "없음":
+                bearish_summary = _translate_to_korean(bearish_summary[:200])
 
         return {
             "ticker": ticker,
