@@ -168,17 +168,17 @@ async def run_scan():
             opps_kr = await asyncio.wait_for(
                 loop.run_in_executor(None, lambda: finder.find_opportunities(
                     market="korea", max_results=20, save_db=True)),
-                timeout=300)
+                timeout=600)
         except FutureTimeout:
-            logger.error("KR scan timed out after 300s")
+            logger.error("KR scan timed out after 600s")
             opps_kr = []
         try:
             opps_us = await asyncio.wait_for(
                 loop.run_in_executor(None, lambda: finder.find_opportunities(
                     market="us", max_results=20, save_db=True)),
-                timeout=300)
+                timeout=600)
         except FutureTimeout:
-            logger.error("US scan timed out after 300s")
+            logger.error("US scan timed out after 600s")
             opps_us = []
         opps = (opps_kr or []) + (opps_us or [])
         if opps:
