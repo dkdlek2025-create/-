@@ -50,24 +50,33 @@ def get_us_stock_info(ticker: str) -> dict:
     }
 
 
-def get_korea_stock_data(ticker: str, period_days: int = 90) -> pd.DataFrame:
-    """Fetch Korean stock data via yfinance."""
+def get_korea_stock_data(ticker: str, period_days: int = 180) -> pd.DataFrame:
+    """Fetch Korean stock data via yfinance with batch fallback."""
+    yf_ticker = _kr_ticker_to_yf(ticker)
     try:
-        yf_ticker = _kr_ticker_to_yf(ticker)
         stock = yf.Ticker(yf_ticker)
         df = stock.history(period=f"{period_days}d")
-        if df.empty:
-            return pd.DataFrame()
-        df.reset_index(inplace=True)
-        df["ticker"] = ticker
-        df["market"] = "KR"
-        df.rename(columns={
-            "Open": "Open", "High": "High", "Low": "Low",
-            "Close": "Close", "Volume": "Volume",
-        }, inplace=True)
-        return df
+        if not df.empty:
+            df.reset_index(inplace=True)
+            df["ticker"] = ticker
+            df["market"] = "KR"
+            return df
     except Exception:
-        return pd.DataFrame()
+        pass
+
+    # Fallback: batch download (more reliable for Korean stocks)
+    try:
+        df = yf.download(yf_ticker, period=f"{period_days}d",
+                         progress=False, auto_adjust=True, timeout=30)
+        if not df.empty:
+            df.reset_index(inplace=True)
+            df["ticker"] = ticker
+            df["market"] = "KR"
+            return df
+    except Exception:
+        pass
+
+    return pd.DataFrame()
 
 
 def get_korea_stock_info(ticker: str) -> dict:

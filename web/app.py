@@ -181,8 +181,8 @@ async def run_scan():
             logger.error("US scan timed out after 600s")
             opps_us = []
         opps = (opps_kr or []) + (opps_us or [])
+        logger.info(f"✅ Scan done: kr={len(opps_kr or [])} us={len(opps_us or [])} total={len(opps)}")
         if opps:
-            logger.info(f"✅ Scan: {len(opps)} opportunities found (kr:{len(opps_kr or [])} us:{len(opps_us or [])})")
             # Push to Telegram
             if telegram_app and settings.telegram_chat_id:
                 for opp in opps[:5]:  # 텔레그램은 top 5만

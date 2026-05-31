@@ -376,11 +376,8 @@ def register_handlers(app):
     app.add_handler(CommandHandler("unsubscribe", cmd_unsubscribe))
     app.add_handler(CommandHandler(["help", "start"], cmd_help))
 
-    # 스케줄러
-    job_queue = app.job_queue
-    if job_queue:
-        interval = max(settings.scan_interval_minutes, 10) * 60
-        job_queue.run_repeating(scheduled_scan, interval=interval, first=120)
+    # 스케줄러는 web/app.py의 run_scan()이 담당 (중복 방지)
+    # Telegram bot은 push-only 역할
 
 
 def run_bot():

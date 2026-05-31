@@ -4,6 +4,7 @@ Opportunity Finder - Two-pass scanner:
   Pass 2: Full chart+news analysis on candidates → only winners
 """
 import time
+import logging
 from datetime import datetime
 import database as db
 from typing import Optional
@@ -14,6 +15,8 @@ from scanner.universe import universe
 from agent.stock_agent import agent
 from data.collector import get_us_stock_data, get_korea_stock_data
 from analysis.technical import add_technical_indicators, generate_technical_signal
+
+logger = logging.getLogger(__name__)
 
 
 class Opportunity:
@@ -161,7 +164,7 @@ class OpportunityFinder:
         # Filter tickers with dots (yfinance can't handle them)
         kr_stocks = [s for s in kr_stocks if "." not in s["ticker"]]
         total = len(kr_stocks)
-        print(f"  [Pass 1] 한국 {total}개 종목 퀵스캔...")
+        logger.info(f"KR scan: {total} stocks")
 
         if not kr_stocks:
             return candidates
@@ -240,7 +243,7 @@ class OpportunityFinder:
                 except Exception:
                     continue
 
-        print(f"  [Pass 1] 한국 {len(candidates)}개 후보 발견")
+        logger.info(f"KR pass1: {len(candidates)} candidates")
         return candidates
 
     def _quick_scan_us(self, top_n: int = 0) -> list[dict]:
@@ -249,7 +252,7 @@ class OpportunityFinder:
         us_stocks = [s for s in us_stocks if "." not in s["ticker"]]
         candidates = []
         total = len(us_stocks)
-        print(f"  [Pass 1] 미국 {total}개 종목 퀵스캔...")
+        logger.info(f"US scan: {total} stocks")
 
         import yfinance as yf
         import requests
@@ -318,7 +321,7 @@ class OpportunityFinder:
                 except Exception:
                     continue
 
-        print(f"  [Pass 1] 미국 {len(candidates)}개 후보 발견")
+        logger.info(f"US pass1: {len(candidates)} candidates")
         return candidates
 
     def _is_worth_telling(self, combined_score: int, action: str,
@@ -357,7 +360,7 @@ class OpportunityFinder:
             all_candidates.extend(self._quick_scan_us(top_n=top_n))
 
         if not all_candidates:
-            print("  Pass 1 결과 없음")
+            logger.warning("Pass 1: 0 candidates")
             return []
 
         # Sort by absolute change (most interesting first)
@@ -365,7 +368,7 @@ class OpportunityFinder:
 
         # Limit Pass 2 candidates (max 40 to keep it fast)
         pass2_candidates = all_candidates[:40]
-        print(f"  [Pass 2] {len(pass2_candidates)}개 딥 분석 중...")
+        logger.info(f"Pass 2: analyzing {len(pass2_candidates)} candidates")
 
         # === PASS 2: Full Analysis ===
         for i, c in enumerate(pass2_candidates):
@@ -418,7 +421,7 @@ class OpportunityFinder:
                 opportunities.append(opp)
 
                 if (i + 1) % 10 == 0:
-                    print(f"    분석 진행: {i+1}/{len(pass2_candidates)}")
+                    logger.info(f"  pass2: {i+1}/{len(pass2_candidates)}")
 
             except Exception:
                 continue
@@ -428,22 +431,20 @@ class OpportunityFinder:
         top = opportunities[:max_results]
         elapsed = time.time() - start_time
 
-        print(f"  [OK] {len(opportunities)}개 기회 발견 (소요시간: {elapsed:.0f}초)")
-        print(f"  {'-'*40}")
-
+        logger.info(f"Done: {len(opportunities)} opportunities in {elapsed:.0f}s")
         for opp in top:
-            print(f"  {opp.name} ({opp.ticker}) | {opp.action} | 점수 {opp.score:+.0f}")
+            logger.info(f"  {opp.name} ({opp.ticker}) | {opp.action} | score {opp.score:+.0f}")
 
         # Save to DB if requested
         if save_db and scan_id:
             try:
                 db.save_opportunities(scan_id, opportunities)
             except Exception as e:
-                print(f"  DB save error: {e}")
+                logger.error(f"DB save error: {e}")
             try:
                 db.save_scan_end(scan_id, len(all_candidates), len(opportunities))
             except Exception as e:
-                print(f"  DB end error: {e}")
+                logger.error(f"DB end error: {e}")
 
         return top
 

@@ -15,7 +15,7 @@ class Settings(BaseSettings):
     telegram_chat_id: str = ""
 
     # Scan
-    scan_interval_minutes: int = 30
+    scan_interval_minutes: int = 180
 
     # Web
     web_host: str = "0.0.0.0"
