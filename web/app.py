@@ -31,7 +31,8 @@ _SCAN_LAST_CALL = 0.0
 _SCAN_MIN_INTERVAL = 30.0  # seconds
 
 def _ticker_ok(t: str) -> bool:
-    return bool(re.match(r'^[A-Za-z0-9]{1,10}$', t.strip()))
+    # Allow Korean, English, digits, dots, spaces (max 30 chars)
+    return bool(re.match(r'^[A-Za-z0-9가-힣.\s]{1,30}$', t.strip()))
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
