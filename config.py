@@ -1,4 +1,12 @@
+import os
 from pydantic_settings import BaseSettings
+
+
+def _get_port() -> int:
+    p = os.environ.get("PORT")
+    if p and p.isdigit():
+        return int(p)
+    return 8000
 
 
 class Settings(BaseSettings):
@@ -15,6 +23,12 @@ class Settings(BaseSettings):
     web_api_key: str = ""
 
     model_config = {"env_file": ".env", "env_file_encoding": "utf-8"}
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        rp = _get_port()
+        if rp != 8000:
+            self.web_port = rp
 
 
 settings = Settings()
