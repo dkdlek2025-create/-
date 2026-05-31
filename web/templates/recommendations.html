@@ -125,13 +125,21 @@ function triggerScan() {
     var status = document.getElementById('scanStatus');
     btn.disabled = true;
     btn.textContent = '⏳ 스캔 중...';
-    status.textContent = '약 30~60초 소요 (2500종목 분석)';
+    status.textContent = '약 1~2분 소요 (2500종목 분석 중...)';
 
     fetch('/api/scan')
         .then(r => r.json())
         .then(data => {
-            // Poll for completion
+            if (data.status === 'rate_limited') {
+                status.textContent = '이미 스캔 중입니다. 잠시만 기다려주세요...';
+                btn.disabled = false;
+                btn.textContent = '🔄 새로 스캔';
+                return;
+            }
+            var elapsed = 0;
             var poll = setInterval(function() {
+                elapsed += 5;
+                status.textContent = '분석 중... ' + elapsed + '초 경과';
                 fetch('/api/scan/status')
                     .then(r => r.json())
                     .then(s => {
@@ -140,12 +148,12 @@ function triggerScan() {
                             location.reload();
                         }
                     });
-            }, 3000);
-            // Timeout after 90s
+            }, 5000);
+            // Timeout after 300s (full scan can take several minutes)
             setTimeout(function() {
                 clearInterval(poll);
                 location.reload();
-            }, 90000);
+            }, 300000);
         });
 }
 </script>

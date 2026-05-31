@@ -363,9 +363,9 @@ async def _korean_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 def register_handlers(app):
     """Register all command handlers."""
-    # Korean commands via MessageHandler+regex (CommandHandler doesn't support non-ASCII in v21)
+    # Korean commands via MessageHandler+regex (filters.COMMAND doesn't match non-ASCII)
     app.add_handler(MessageHandler(
-        filters.COMMAND & filters.Regex(r'^/[\uAC00-\uD7AF]+'),
+        filters.TEXT & filters.Regex(r'^/(분석|매수|뉴스|기회|구독|해지|도움|시작)(\s.*)?$'),
         _korean_cmd))
     # English commands
     app.add_handler(CommandHandler("analyze", cmd_analyze))

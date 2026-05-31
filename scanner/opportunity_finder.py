@@ -176,7 +176,8 @@ class OpportunityFinder:
         yf_tickers = list(ticker_map.keys())
         import requests, yfinance as yf
         session = requests.Session()
-        session.headers.update({"User-Agent": "Mozilla/5.0"})
+        session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+        session.timeout = 60
         yf._session = session
 
         # Chunked batch download (yfinance fails with >100 tickers in one call)
@@ -187,7 +188,7 @@ class OpportunityFinder:
                 df = yf.download(
                     chunk, period="5d", interval="1d",
                     group_by="ticker", progress=False, auto_adjust=True,
-                    timeout=30
+                    timeout=60
                 )
                 if df.empty or df.isna().all().all():
                     continue
@@ -253,7 +254,8 @@ class OpportunityFinder:
         import yfinance as yf
         import requests
         session = requests.Session()
-        session.headers.update({"User-Agent": "Mozilla/5.0"})
+        session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+        session.timeout = 60
         yf._session = session
 
         tickers_list = [s["ticker"] for s in us_stocks]
@@ -266,7 +268,7 @@ class OpportunityFinder:
                 df = yf.download(
                     chunk, period="5d", interval="1d",
                     group_by="ticker", progress=False, auto_adjust=True,
-                    timeout=30
+                    timeout=60
                 )
                 if df.empty:
                     continue

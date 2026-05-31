@@ -2,6 +2,13 @@ from datetime import datetime, timedelta
 from typing import Optional
 import pandas as pd
 import yfinance as yf
+import requests
+
+# Configure yfinance global session with timeout + User-Agent
+_yf_session = requests.Session()
+_yf_session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
+_yf_session.timeout = 30
+yf._session = _yf_session
 
 
 def _kr_ticker_to_yf(ticker: str) -> str:
