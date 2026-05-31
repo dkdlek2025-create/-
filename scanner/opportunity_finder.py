@@ -177,13 +177,14 @@ class OpportunityFinder:
             ticker_map[raw + suffix] = raw
 
         yf_tickers = list(ticker_map.keys())
+
+        # --- Try yfinance batch download first ---
         import requests, yfinance as yf
         session = requests.Session()
         session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"})
         session.timeout = 60
         yf._session = session
 
-        # Chunked batch download (yfinance fails with >100 tickers in one call)
         chunk_size = 50
         for i in range(0, len(yf_tickers), chunk_size):
             chunk = yf_tickers[i:i + chunk_size]
@@ -238,6 +239,53 @@ class OpportunityFinder:
                             "change": round(change, 1),
                             "volume_ratio": round(vol_ratio, 1),
                             "rsi": round(rsi_val, 1),
+                            "latest_price": round(latest_price, 0),
+                        })
+                except Exception:
+                    continue
+
+        # --- If yfinance produced no candidates, fallback: direct Yahoo Finance quote API ---
+        if not candidates:
+            logger.info("KR yfinance batch failed, falling back to direct API...")
+            fallback_stocks = kr_stocks[:500]  # Top 500 stocks
+            for s in fallback_stocks:
+                try:
+                    raw_t = s["ticker"]
+                    yf_t = ticker_map.get(raw_t + (".KQ" if s.get("market") == "KOSDAQ" else ".KS"))
+                    if not yf_t:
+                        continue
+                    url = f"https://query1.finance.yahoo.com/v8/finance/chart/{yf_t}?range=5d&interval=1d"
+                    r = session.get(url, timeout=20)
+                    r.raise_for_status()
+                    data = r.json()
+                    result = data.get("chart", {}).get("result", [None])[0]
+                    if not result:
+                        continue
+                    timestamps = result.get("timestamp", [])
+                    quotes = result.get("indicators", {}).get("quote", [{}])[0]
+                    if not timestamps or not quotes:
+                        continue
+                    close_prices = quotes.get("close", [])
+                    close_prices = [c for c in close_prices if c is not None]
+                    if len(close_prices) < 3:
+                        continue
+                    vol_prices = quotes.get("volume", [])
+                    vol_prices = [v for v in vol_prices if v is not None]
+                    latest_price = close_prices[-1]
+                    prev_price = close_prices[-2]
+                    change = ((latest_price - prev_price) / prev_price) * 100
+                    latest_vol = vol_prices[-1] if len(vol_prices) > 0 else 0
+                    avg_vol = sum(vol_prices[-5:]) / max(len(vol_prices[-5:]), 1) if len(vol_prices) >= 5 else latest_vol
+                    vol_ratio = latest_vol / avg_vol if avg_vol > 0 else 1
+
+                    if abs(change) >= 4 or vol_ratio >= 2.0:
+                        candidates.append({
+                            "ticker": raw_t,
+                            "name": s.get("name", raw_t),
+                            "market": "korea",
+                            "change": round(change, 1),
+                            "volume_ratio": round(vol_ratio, 1),
+                            "rsi": 50,
                             "latest_price": round(latest_price, 0),
                         })
                 except Exception:
