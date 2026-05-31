@@ -6,6 +6,7 @@ import asyncio
 import logging
 import time
 import re
+import threading
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 
 # --- Bot / Scanner references (set by lifespan) ---
 telegram_app = None
+telegram_thread = None
 scheduler = None
 
 # --- Simple auth middleware ---
@@ -77,20 +79,14 @@ async def lifespan(app: FastAPI):
     """Start bot + scheduler on startup, stop on shutdown."""
     global telegram_app, scheduler
 
-    # Start Telegram bot in background
+    # Start Telegram bot in a separate thread (more reliable than lifespan polling)
     token = settings.telegram_bot_token
     if token:
-        try:
-            from telegram.ext import Application
-            telegram_app = Application.builder().token(token).build()
-            from bot.telegram_bot import register_handlers
-            register_handlers(telegram_app)
-            await telegram_app.initialize()
-            await telegram_app.start()
-            await telegram_app.updater.start_polling()
-            logger.info("✅ Telegram bot started")
-        except Exception as e:
-            logger.error(f"❌ Telegram bot failed: {e}")
+        from bot.telegram_bot import run_bot_async
+        telegram_thread = threading.Thread(
+            target=run_bot_async, args=(token,), daemon=True)
+        telegram_thread.start()
+        logger.info("✅ Telegram bot thread started")
 
     # Clean up stuck scans
     conn = db.get_db()
@@ -111,10 +107,7 @@ async def lifespan(app: FastAPI):
     # Shutdown
     if scheduler:
         scheduler.shutdown(wait=False)
-    if telegram_app:
-        await telegram_app.updater.stop()
-        await telegram_app.stop()
-        await telegram_app.shutdown()
+    # Telegram bot runs in daemon thread - will auto-exit on process exit
 
 
 app = FastAPI(title="Stock AI Agent", lifespan=lifespan)
@@ -183,19 +176,17 @@ async def run_scan():
         opps = (opps_kr or []) + (opps_us or [])
         logger.info(f"✅ Scan done: kr={len(opps_kr or [])} us={len(opps_us or [])} total={len(opps)}")
         if opps:
-            # Push to Telegram
-            if telegram_app and settings.telegram_chat_id:
-                for opp in opps[:5]:  # 텔레그램은 top 5만
-                    msg = opp.to_telegram_msg()
-                    try:
-                        await telegram_app.bot.send_message(
-                            chat_id=settings.telegram_chat_id,
-                            text=msg,
-                            disable_web_page_preview=True,
-                        )
+            # Push to Telegram via thread-safe helper
+            for opp in opps[:5]:
+                try:
+                    from bot.telegram_bot import send_to_chat
+                    ok = await send_to_chat(settings.telegram_chat_id, opp.to_telegram_msg())
+                    if ok:
                         logger.info(f"  → Pushed {opp.name} to Telegram")
-                    except Exception as e:
-                        logger.error(f"  → Telegram push failed: {e}")
+                    else:
+                        logger.error(f"  → Push failed (bot not ready)")
+                except Exception as e:
+                    logger.error(f"  → Telegram push failed: {e}")
     except Exception as e:
         logger.error(f"❌ Scan failed: {e}")
 

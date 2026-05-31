@@ -14,6 +14,21 @@ from utils.search import searcher
 logging.basicConfig(level=logging.INFO)
 _subscribed_chats: set[int] = set()
 
+# Global reference to the running Application (for push from scanner)
+_bot_app: Application | None = None
+
+
+async def send_to_chat(chat_id: str, text: str) -> bool:
+    """Send a message via the running bot. Thread-safe."""
+    global _bot_app
+    if not _bot_app:
+        return False
+    try:
+        await _bot_app.bot.send_message(chat_id=chat_id, text=text, disable_web_page_preview=True)
+        return True
+    except Exception:
+        return False
+
 
 def _resolve_ticker(text: str) -> str:
     """Convert company name to ticker. If already a ticker, return as-is."""
@@ -394,3 +409,23 @@ def run_bot():
     print(f"   회사명 자동 검색 지원 (오타/띄어쓰기 무시)")
 
     app.run_polling(allowed_updates=Update.ALL_TYPES)
+
+
+def run_bot_async(token: str):
+    """Run bot in a separate thread with its own event loop.
+    Called from web/app.py lifespan. Stores _bot_app for push access."""
+    global _bot_app
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        app = Application.builder().token(token).build()
+        register_handlers(app)
+        _bot_app = app
+        print("🤖 주식 AI 에이전트 (별도 쓰레드)")
+        app.run_polling(allowed_updates=Update.ALL_TYPES)
+    except Exception as e:
+        print(f"❌ Telegram bot thread error: {e}")
+    finally:
+        _bot_app = None
+        loop.close()
