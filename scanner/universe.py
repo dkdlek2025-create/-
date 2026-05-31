@@ -158,26 +158,7 @@ class UniverseManager:
             except Exception as e:
                 print(f"  KRX API error: {e}")
 
-        # Method 3: FinanceDataReader (Python 3.11+ only)
-        if not stocks:
-            try:
-                import FinanceDataReader as fdr
-                df = fdr.StockListing("KRX")
-                for _, row in df.iterrows():
-                    stocks.append({
-                        "ticker": row["Code"],
-                        "name": row.get("Name", ""),
-                        "market": row.get("Market", ""),
-                        "sector": row.get("Sector", ""),
-                        "industry": row.get("Industry", ""),
-                    })
-                print(f"  KRX {len(stocks)}개 종목 로드 완료")
-            except ImportError:
-                print("  FinanceDataReader not available")
-            except Exception as e:
-                print(f"  FinanceDataReader error: {e}")
-
-        # Method 4: Fallback list
+        # Method 3: Fallback list
         if not stocks:
             stocks = FALLBACK_KR_STOCKS
             print(f"  Using fallback list: {len(stocks)} stocks")
