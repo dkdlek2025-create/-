@@ -3,7 +3,6 @@ __pycache__/
 *.pyo
 .env
 data/*.db
-data/universe_*.json
 alert_cache.json
 report.json
 .DS_Store
