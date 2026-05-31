@@ -3,8 +3,9 @@ Telegram Bot - 한글 명령어 + 회사명 검색 지원.
 """
 import logging
 import database as db
+import re
 from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
 
 from config import settings
 from agent.stock_agent import agent
@@ -341,16 +342,32 @@ async def scheduled_scan(context: ContextTypes.DEFAULT_TYPE):
         return
 
 
-def register_handlers(app):
-    """Register all command handlers on the application. (Used by web/app.py too)"""
-    app.add_handler(CommandHandler("분석", cmd_analyze))
-    app.add_handler(CommandHandler("매수", cmd_buy))
-    app.add_handler(CommandHandler("뉴스", cmd_news))
-    app.add_handler(CommandHandler("기회", cmd_opportunities))
-    app.add_handler(CommandHandler("구독", cmd_subscribe))
-    app.add_handler(CommandHandler("해지", cmd_unsubscribe))
-    app.add_handler(CommandHandler("도움", cmd_help))
+async def _korean_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Route Korean /명령어 to the correct handler (CommandHandler doesn't support non-ASCII)."""
+    text = update.message.text
+    match = re.match(r"^/(\S+)(?:\s+(.+))?$", text)
+    if not match:
+        return
+    cmd = match.group(1)
+    args_text = match.group(2)
+    context.args = args_text.split() if args_text else []
+    handlers = {
+        "분석": cmd_analyze, "매수": cmd_buy, "뉴스": cmd_news,
+        "기회": cmd_opportunities, "구독": cmd_subscribe,
+        "해지": cmd_unsubscribe, "도움": cmd_help, "시작": cmd_help,
+    }
+    handler = handlers.get(cmd)
+    if handler:
+        await handler(update, context)
 
+
+def register_handlers(app):
+    """Register all command handlers."""
+    # Korean commands via MessageHandler+regex (CommandHandler doesn't support non-ASCII in v21)
+    app.add_handler(MessageHandler(
+        filters.COMMAND & filters.Regex(r'^/[\uAC00-\uD7AF]+'),
+        _korean_cmd))
+    # English commands
     app.add_handler(CommandHandler("analyze", cmd_analyze))
     app.add_handler(CommandHandler("buy", cmd_buy))
     app.add_handler(CommandHandler("news", cmd_news))
